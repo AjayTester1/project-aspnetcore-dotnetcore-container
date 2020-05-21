@@ -1,0 +1,63 @@
+on: [push]
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    
+    - uses: actions/checkout@master
+    
+    - uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Create ACR
+      id: create-acr
+      run: |
+        az acr create -n testrs -g testrsb2dc-rg --location "South India" --sku Standard --admin-enabled
+        echo "::set-output name=acr_username::`az acr credential show -n testrs --query username | xargs`"
+        echo "::set-output name=acr_password::`az acr credential show -n testrs --query passwords[0].value | xargs`"
+        echo "::add-mask::`az acr credential show -n testrs --query passwords[0].value | xargs`"
+
+    - uses: azure/docker-login@v1
+      with:
+        login-server: testrs.azurecr.io
+        username: ${{ steps.create-acr.outputs.acr_username }}
+        password: ${{ steps.create-acr.outputs.acr_password }}
+
+    - name: Build and push image to ACR
+      id: build-image
+      run: |
+        docker build "$GITHUB_WORKSPACE/aspnet-core-dotnet-core" -f  "aspnet-core-dotnet-core/Dockerfile" -t testrs.azurecr.io/petestaks:${{ github.sha }}
+        docker push testrs.azurecr.io/petestaks:${{ github.sha }}
+    
+    - uses: azure/k8s-set-context@v1
+      id: login
+      with:
+         kubeconfig: ${{ secrets.aks_petestaks_kubeConfig }}
+    
+    - name: Create namespace
+      run: |
+        namespacePresent=`kubectl get namespace | grep petestaks5a31 | wc -l`
+        if [ $namespacePresent -eq 0 ]
+        then
+            echo `kubectl create namespace petestaks5a31`
+        fi
+
+    - uses: azure/k8s-create-secret@v1
+      with:
+        namespace: petestaks5a31
+        container-registry-url: testrs.azurecr.io
+        container-registry-username: ${{ steps.create-acr.outputs.acr_username }}
+        container-registry-password: ${{ steps.create-acr.outputs.acr_password }}
+        secret-name: petestaksdockerauth
+       
+    - uses: azure/k8s-deploy@v1
+      with:
+        namespace: petestaks5a31
+        manifests: |
+          manifests/deployment-11.yml
+          manifests/service-11.yml
+        images: |
+          testrs.azurecr.io/petestaks:${{ github.sha }}
+        imagepullsecrets: |
+          petestaksdockerauth
