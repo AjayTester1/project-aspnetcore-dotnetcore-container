@@ -1,0 +1,63 @@
+on: [push]
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    
+    - uses: actions/checkout@master
+    
+    - uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Create ACR
+      id: create-acr
+      run: |
+        az acr create -n testi -g testi8244-rg --location "South India" --sku Standard --admin-enabled
+        echo "::set-output name=acr_username::`az acr credential show -n testi --query username | xargs`"
+        echo "::set-output name=acr_password::`az acr credential show -n testi --query passwords[0].value | xargs`"
+        echo "::add-mask::`az acr credential show -n testi --query passwords[0].value | xargs`"
+
+    - uses: azure/docker-login@v1
+      with:
+        login-server: testi.azurecr.io
+        username: ${{ steps.create-acr.outputs.acr_username }}
+        password: ${{ steps.create-acr.outputs.acr_password }}
+
+    - name: Build and push image to ACR
+      id: build-image
+      run: |
+        docker build "$GITHUB_WORKSPACE/aspnet-core-dotnet-core" -f  "aspnet-core-dotnet-core/Dockerfile" -t testi.azurecr.io/petestaks:${{ github.sha }}
+        docker push testi.azurecr.io/petestaks:${{ github.sha }}
+    
+    - uses: azure/k8s-set-context@v1
+      id: login
+      with:
+         kubeconfig: ${{ secrets.aks_petestaks_kubeConfig }}
+    
+    - name: Create namespace
+      run: |
+        namespacePresent=`kubectl get namespace | grep petestaksd07f | wc -l`
+        if [ $namespacePresent -eq 0 ]
+        then
+            echo `kubectl create namespace petestaksd07f`
+        fi
+
+    - uses: azure/k8s-create-secret@v1
+      with:
+        namespace: petestaksd07f
+        container-registry-url: testi.azurecr.io
+        container-registry-username: ${{ steps.create-acr.outputs.acr_username }}
+        container-registry-password: ${{ steps.create-acr.outputs.acr_password }}
+        secret-name: petestaksdockerauth
+       
+    - uses: azure/k8s-deploy@v1
+      with:
+        namespace: petestaksd07f
+        manifests: |
+          manifests/deployment-18.yml
+          manifests/service-18.yml
+        images: |
+          testi.azurecr.io/petestaks:${{ github.sha }}
+        imagepullsecrets: |
+          petestaksdockerauth
