@@ -1,0 +1,16 @@
+apiVersion : apps/v1beta1
+kind: Deployment
+metadata:
+  name: "petestaks-718c"
+spec:
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: "petestaks-718c"
+    spec:
+      containers:
+        - name: "petestaks-718c"
+          image: "tedfgred.azurecr.io/petestaks"
+          ports:
+          - containerPort: 8123
