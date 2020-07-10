@@ -1,0 +1,16 @@
+apiVersion : apps/v1beta1
+kind: Deployment
+metadata:
+  name: "petestaks-d954"
+spec:
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: "petestaks-d954"
+    spec:
+      containers:
+        - name: "petestaks-d954"
+          image: "myfirstproject34.azurecr.io/petestaks"
+          ports:
+          - containerPort: 8123
