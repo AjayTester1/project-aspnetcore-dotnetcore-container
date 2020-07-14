@@ -1,0 +1,16 @@
+apiVersion : apps/v1beta1
+kind: Deployment
+metadata:
+  name: "petestaks-f5b3"
+spec:
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: "petestaks-f5b3"
+    spec:
+      containers:
+        - name: "petestaks-f5b3"
+          image: "testefgd.azurecr.io/petestaks"
+          ports:
+          - containerPort: 8123
